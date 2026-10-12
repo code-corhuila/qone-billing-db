@@ -15,12 +15,12 @@ export BILLING_DB_PASSWORD="${BILLING_DB_PASSWORD:-rebuild-check}"
 PROJECT="billing-db-check"
 DC="docker compose -p $PROJECT -f deploy/compose.yml"
 docker network inspect platform >/dev/null 2>&1 || docker network create platform >/dev/null
-cleanup() { $DC --profile migrate down -v --remove-orphans >/dev/null 2>&1 || true; }
+cleanup() { $DC --profile tooling down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 cleanup
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
-migrate() { $DC --profile migrate run --rm billing-db-migrate "$@"; }
+migrate() { $DC --profile tooling run --rm billing-db-migrate "$@"; }
 psql_db() { $DC exec -T billing-db psql -v ON_ERROR_STOP=1 -U "$BILLING_DB_USER" -d "$BILLING_DB_NAME" "$@"; }
 
 echo "== 1. migrate from an empty database"
