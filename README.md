@@ -51,7 +51,7 @@ in the folder of its family; a merged migration is never edited (a fix is a new 
 cp .env.example .env            # set BILLING_DB_PASSWORD; .env is ignored by git
 docker network create platform  # once; qone-infra creates it in the full platform
 docker compose --env-file .env -f deploy/compose.yml up -d billing-db
-docker compose --env-file .env -f deploy/compose.yml --profile migrate run --rm billing-db-migrate
+docker compose --env-file .env -f deploy/compose.yml --profile tooling run --rm billing-db-migrate
 ```
 
 The runner accepts any Flyway action (`info`, `validate`, `migrate`). The rebuild check of
