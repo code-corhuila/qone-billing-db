@@ -27,7 +27,7 @@ services:
   billing-db-migrate:
     image: flyway/flyway:10.22.0
     container_name: billing-db-migrate
-    profiles: ["migrate"]
+    profiles: ["tooling"]
     depends_on:
       billing-db:
         condition: service_healthy
