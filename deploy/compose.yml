@@ -1,0 +1,53 @@
+# The billing database as qone-infra composes it (Annex G): its own PostgreSQL instance with
+# a fixed image version, a volume and a health check, plus the Flyway runner. The runner is
+# behind a profile so `up` never starts it; it is run once per deployment:
+#   docker compose --env-file .env run --rm billing-db-migrate
+# Credentials come from the .env of qone-infra; nothing is written here.
+services:
+  billing-db:
+    image: postgres:16.4-alpine
+    container_name: billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BILLING_DB_NAME:-billing}
+      POSTGRES_USER: ${BILLING_DB_USER:-billing}
+      POSTGRES_PASSWORD: ${BILLING_DB_PASSWORD:?BILLING_DB_PASSWORD is required}
+    expose:
+      - "5432"
+    volumes:
+      - billing-db-data:/var/lib/postgresql/data
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BILLING_DB_USER:-billing} -d ${BILLING_DB_NAME:-billing}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  billing-db-migrate:
+    image: flyway/flyway:10.22.0
+    container_name: billing-db-migrate
+    profiles: ["tooling"]
+    depends_on:
+      billing-db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://billing-db:5432/${BILLING_DB_NAME:-billing}
+      FLYWAY_USER: ${BILLING_DB_USER:-billing}
+      FLYWAY_PASSWORD: ${BILLING_DB_PASSWORD:?BILLING_DB_PASSWORD is required}
+    volumes:
+      - ../migrations:/workspace/migrations:ro
+      - ../flyway.toml:/workspace/flyway.toml:ro
+    # The entrypoint fixes where the config lives; the command is the default action, and any
+    # other action replaces it: `run --rm billing-db-migrate info`.
+    entrypoint: ["flyway", "-workingDirectory=/workspace", "-configFiles=/workspace/flyway.toml"]
+    command: ["migrate"]
+    networks:
+      - platform
+
+volumes:
+  billing-db-data:
+
+networks:
+  platform:
+    external: true
