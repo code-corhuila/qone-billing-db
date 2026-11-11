@@ -1,11 +1,12 @@
 #!/usr/bin/env sh
 # The rebuild check of Annex A and 06-data/migration-strategy.md, against a fresh instance:
+#   0. scripts/check-seed-identities.sh      -> seed e-mails on .test, no password hash
 #   1. migrate from an empty database        -> the schema builds from zero
 #   2. migrate again                         -> "No migration necessary" (incremental)
 #   3. every U script in reverse, with psql  -> the schema and the roles are gone
 #   4. migrate again                         -> after undo, it builds again
 #   5. validate                              -> checksums match the files
-#   6. apply the seed twice, count the rows  -> seeds are idempotent
+#   6. apply the seed twice, count the rows  -> seeds are idempotent and the names synthetic
 # Usage: scripts/rebuild-check.sh   (needs Docker; uses deploy/compose.yml with a throwaway project)
 set -eu
 cd "$(dirname "$0")/.."
@@ -22,6 +23,9 @@ cleanup
 fail() { echo "FAIL: $1" >&2; exit 1; }
 migrate() { $DC --profile tooling run --rm billing-db-migrate "$@"; }
 psql_db() { $DC exec -T billing-db psql -v ON_ERROR_STOP=1 -U "$BILLING_DB_USER" -d "$BILLING_DB_NAME" "$@"; }
+
+echo "== 0. seed e-mails on .test, no password hash in any migration (qone-docs#55)"
+sh scripts/check-seed-identities.sh
 
 echo "== 1. migrate from an empty database"
 $DC up -d billing-db --wait
@@ -61,6 +65,8 @@ psql_db < migrations/02_dml/V007__seed_invoice.sql >/dev/null
 psql_db < migrations/02_dml/V007__seed_invoice.sql >/dev/null
 rows=$(psql_db -tA -c "SELECT count(*) FROM billing.invoice")
 [ "$rows" = "5" ] || fail "expected 5 seeded invoices, found $rows"
+real=$(psql_db -tA -c "SELECT (SELECT count(*) FROM billing.invoice WHERE student_name !~ '^Estudiante Demo [0-9]{2}\$')")
+[ "$real" = "0" ] || fail "$real seeded name(s) are not synthetic (Estudiante Demo NN / Profesor Demo NN, qone-docs#55)"
 public_tables=$(psql_db -tA -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
 [ "$public_tables" = "0" ] || fail "a table lives in public"
 

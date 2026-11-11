@@ -21,7 +21,7 @@ Specification: `06-data/models.md` (schema `billing`), `06-data/modeling-convent
 | Table | What it keeps | Rules the database enforces |
 |---|---|---|
 | `invoice` | the term invoice of a student, money in COP cents | one invoice per student and term (`ux_invoice_student_id_term`, INV-BIL-001); `PAID` if and only if `paid_at` and `provider_reference` are set (INV-BIL-002); amount `> 0`; status is a `CHECK`, not an `ENUM` |
-| `idempotency_key` | the `Idempotency-Key` of every issue, written in the same transaction as the invoice (norm 5.3.8) | key of 8 to 128 characters |
+| `idempotency_key` | the `Idempotency-Key` of every issue, written in the same transaction as the invoice (norm 5.3.8), with its owner and the SHA-256 of the request body | the key is scoped to its owner, `PRIMARY KEY (owner_id, key)` since V010 (the same key from another caller is another key); key of 8 to 128 characters; `request_hash` is 64 hex characters |
 | `outbox` | `InvoiceIssued` and `TuitionPaid`, written in the transaction of the change, relayed later by `qone-worker` (norm 5.3.11) | event type from the closed list; partial index on the unpublished rows |
 
 `student_id` is an id of `identity.app_user` and is **not** a foreign key: a key to another
@@ -32,11 +32,11 @@ domain is a value, not a constraint. Roles `billing_reader` and `billing_writer`
 
 ```
 migrations/
-├── 01_ddl/   00_extensions · 01_schemas · 02_tables · 04_alter · 05_indexes   (V001..V006)
+├── 01_ddl/   00_extensions · 01_schemas · 02_tables · 04_alter · 05_indexes   (V001..V006, V010)
 ├── 02_dml/   seeds as upserts                                                 (V007)
 ├── 03_dcl/   roles and grants                                                 (V008, V009)
 ├── 04_tcl/   recorded one-off recoveries, never automatic
-└── undo/     U001..U009, one per V, same relative path
+└── undo/     U001..U010, one per V, same relative path
 flyway.toml   the locations, in order; undo/ is not one of them
 deploy/       the instance and the Flyway runner that qone-infra includes
 scripts/      rebuild-check.sh, what db-ci runs
@@ -65,6 +65,19 @@ It migrates a throwaway instance from zero, migrates again (nothing applied), ap
 `U` script in reverse with `psql` and checks the schema and the roles are gone, rebuilds,
 validates the checksums and applies the seed twice. The Flyway history table lives in the
 `billing` schema, so nothing at all is created in `public`.
+
+## Seed identities
+
+The seeds name only synthetic people (`code-corhuila/qone-docs#55`): the student name of each invoice is
+`Estudiante Demo 01`..`05` or `Profesor Demo 01`..`03`, with the same ids as the identity seed
+(`qone-identity-db`, e-mails on the reserved `.test` TLD). No real name, e-mail or credential is
+versioned: `scripts/check-seed-identities.sh` (db-ci, and step 0 of the rebuild check) fails on an
+e-mail outside `.test` or a password-hash literal in any migration, and step 6 of the rebuild check
+fails on a seeded name that is not synthetic.
+
+The renaming edited V007 in place, a decided exception to "a merged version is immutable": its
+Flyway checksum changed, so a machine that already applied it runs `sh scripts/down.sh --volumes`
+once in `qone-infra` (every environment is local) and brings the platform up again.
 
 ## Branching
 
